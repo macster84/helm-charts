@@ -23,28 +23,41 @@ spec:
       restartPolicy: OnFailure
       containers:
       - name: create-buckets
-        image: rustfs/mc:latest
+        image: rustfs/rc:latest
         command: ["sh", "-c"]
         args:
         - |
           set -e
           echo "Waiting for RustFS to be ready..."
-          until mc alias set rustfs http://{{ .Release.Name }}-rustfs-svc.{{ .Release.Namespace }}.svc.cluster.local:9000 $RUSTFS_ACCESS_KEY $RUSTFS_SECRET_KEY; do
+          until rc alias set rustfs http://{{ .Release.Name }}-rustfs-svc.{{ .Release.Namespace }}.svc.cluster.local:9000 $RUSTFS_ACCESS_KEY $RUSTFS_SECRET_KEY; do
             echo "RustFS not ready yet, waiting..."
             sleep 5
           done
 
           echo "Creating shopware-private bucket..."
-          mc mb --ignore-existing rustfs/shopware-private
+          rc bucket create --ignore-existing rustfs/shopware-private
 
           echo "Creating shopware-public bucket..."
-          mc mb --ignore-existing rustfs/shopware-public
+          rc bucket create --ignore-existing rustfs/shopware-public
 
           echo "Setting public read policy on shopware-public bucket..."
-          mc anonymous set download rustfs/shopware-public
+          cat > /tmp/anonymous-download-policy.json <<POLICY
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {"AWS": ["*"]},
+                "Action": ["s3:GetObject"],
+                "Resource": ["arn:aws:s3:::shopware-public/*"]
+              }
+            ]
+          }
+          POLICY
+          rc bucket anonymous set-json /tmp/anonymous-download-policy.json rustfs/shopware-public
 
           echo "Buckets created successfully!"
-          mc ls rustfs
+          rc bucket list rustfs
         env:
         - name: RUSTFS_ACCESS_KEY
           valueFrom:
